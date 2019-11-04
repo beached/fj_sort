@@ -8,7 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 include("${CMAKE_SOURCE_DIR}/glean/CMakeListsCompiler.txt")
 include("${CMAKE_SOURCE_DIR}/glean/CMakeLists.txt")
 
-find_package(Boost COMPONENTS system iostreams filesystem REQUIRED)
+find_package(Boost COMPONENTS system iostreams filesystem thread REQUIRED)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
 
