@@ -81,27 +81,16 @@ namespace daw::parallel {
 			}
 			return result;
 		}
-		template<typename L, typename R, typename F>
-		constexpr decltype( auto ) binary_func( F &&f, L &&l, R &&r ) {
-			return ( std::forward<F>( f ) )( std::forward<L>( l ),
-			                                 std::forward<R>( r ) );
-		}
-
-		template<typename L, typename R>
-		constexpr void assign( L &&l, R &&r ) {
-			std::forward<L>( l ) = std::forward<R>( r );
-		}
 
 		template<typename Iterator, typename OutputIterator, typename BinaryOp>
-		OutputIterator reduce_futures2( Iterator first, Iterator last,
-		                                OutputIterator out_it,
-		                                BinaryOp const &binary_op ) {
+		void reduce_futures2( Iterator first, Iterator last, OutputIterator out_it,
+		                      BinaryOp const &binary_op ) {
 
 			ptrdiff_t range_sz = std::distance( first, last );
 			if( range_sz == 1 ) {
-				assign( *out_it++, std::move( *first++ ) );
-				//*out_it++ = **first++;
-				return out_it;
+				*out_it++ = std::move( *first++ );
+				(void)out_it;
+				return;
 			}
 			bool const odd_count = range_sz % 2 == 1;
 			if( odd_count ) {
@@ -110,20 +99,17 @@ namespace daw::parallel {
 			while( first != last ) {
 				auto l_it = first++;
 				auto r_it = first++;
-				assign( *out_it++,
-				        ( *l_it ).then( [r = daw::mutable_capture( std::move( *r_it ) ),
-				                         binary_op = daw::mutable_capture( binary_op )](
-				                          auto &&result ) {
-					        using arg_t = decltype( result );
-					        return binary_func( *binary_op,
-					                            std::forward<arg_t>( result ).get( ),
-					                            std::move( *r ).get( ) );
-				        } ) );
+				*out_it++ = ( *l_it ).then(
+				  [r = daw::mutable_capture( r_it ), binary_op]( auto &&result ) {
+					  using arg_t = decltype( result );
+					  return binary_op( std::forward<arg_t>( result ).get( ),
+					                    std::move( **r ).get( ) );
+				  } );
 			}
 			if( odd_count ) {
-				assign( *out_it++, std::move( *last ) );
+				*out_it++ = std::move( *last );
+				(void)out_it;
 			}
-			return out_it;
 		}
 
 		template<typename Iterator>
@@ -141,12 +127,12 @@ namespace daw::parallel {
 			impl::reduce_futures2( first, last, std::back_inserter( results ),
 			                       binary_op );
 
+			auto tmp = std::vector<value_type>( );
+			tmp.reserve( results.size( ) / 2U );
 			while( results.size( ) > 1 ) {
-				auto tmp = std::vector<value_type>( );
-				tmp.reserve( results.size( ) / 2U );
+				tmp.clear( );
 
-				impl::reduce_futures2( results.data( ),
-				                       results.data( ) + results.size( ),
+				impl::reduce_futures2( results.begin( ), results.end( ),
 				                       std::back_inserter( tmp ), binary_op );
 				std::swap( results, tmp );
 			}
@@ -178,7 +164,7 @@ namespace daw::parallel {
 	void fj_sort( Iterator first, Iterator last, Compare comp = Compare{} ) {
 
 		// Allow for later on swappng with items like stable_sort
-		constexpr auto sorter = []( intmax_t *f, intmax_t *l, auto cmp ) {
+		constexpr auto sorter = []( auto f, auto l, auto cmp ) {
 			std::sort( f, l, cmp );
 		};
 
@@ -187,9 +173,9 @@ namespace daw::parallel {
 		auto sorters = std::vector<boost::future<impl::span<Iterator>>>( );
 
 		auto const sort_fn =
-		  [sorter, comp]( impl::span<Iterator> cur_range ) -> impl::span<Iterator> {
-			sorter( cur_range.begin( ), cur_range.end( ), comp );
-			return cur_range;
+		  [sorter, comp]( impl::span<Iterator> rng ) -> impl::span<Iterator> {
+			sorter( rng.begin( ), rng.end( ), comp );
+			return rng;
 		};
 
 		for( auto rng : ranges ) {
@@ -199,7 +185,7 @@ namespace daw::parallel {
 			   sort_fn]( ) -> impl::span<Iterator> { return sort_fn( *rng ); } ) );
 		}
 
-		impl::reduce_futures( sorters.data( ), sorters.data( ) + sorters.size( ),
+		impl::reduce_futures( sorters.begin( ), sorters.end( ),
 		                      impl::parallel_sort_merger{comp} )
 		  .wait( );
 	}
