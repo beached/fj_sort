@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "daw/call_dag.h"
 #include "daw/daw_benchmark.h"
 #include "daw/fj_sort.h"
 
@@ -32,7 +33,7 @@ inline constexpr size_t NUM_RUNS = 50U;
 #if defined( DEBUG )
 inline constexpr size_t MAX_RANGE_SZ = 100'000;
 #else
-inline constexpr size_t MAX_RANGE_SZ = 25'000'000U;
+inline constexpr size_t MAX_RANGE_SZ = 10'000'000U;
 #endif
 
 template<typename Integer, size_t N>
@@ -72,7 +73,9 @@ auto test_sort( std::string const &title, std::vector<Value> const &c,
 	auto const sz = c.size( ) * sizeof( c.front( ) );
 	return daw::bench_n_test_mbs2<NUM_RUNS>(
 	  title, sz,
-	  []( auto const &rng ) { return true; /*return std::is_sorted( rng.first, rng.second );*/ },
+	  []( auto const &rng ) {
+		  return true; /*return std::is_sorted( rng.first, rng.second );*/
+	  },
 	  s, c );
 }
 
@@ -83,12 +86,13 @@ void compare_sorts( size_t N, Iterator first ) {
 	          << ": "
 	          << daw::utility::to_bytes_per_second( N * sizeof( value_type ) )
 	          << '\n';
+
 	auto data =
 	  std::vector<value_type>( first, first + static_cast<ptrdiff_t>( N ) );
-	auto seq_res = test_sort( "sequential", data, sequential_sorting{} );
+	auto par_res = test_sort( "parallel", data, parallel_sorting{} );
 
 	data = std::vector<value_type>( first, first + static_cast<ptrdiff_t>( N ) );
-	auto par_res = test_sort( "parallel", data, parallel_sorting{} );
+	auto seq_res = test_sort( "sequential", data, sequential_sorting{} );
 
 	auto seq_min = *std::min_element( seq_res.begin( ), seq_res.end( ) );
 	auto par_min = *std::min_element( par_res.begin( ), par_res.end( ) );

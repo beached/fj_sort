@@ -84,7 +84,7 @@ namespace daw::parallel {
 
 		template<typename Iterator, typename OutputIterator, typename BinaryOp>
 		void reduce_futures2( Iterator first, Iterator last, OutputIterator out_it,
-		                      BinaryOp const &binary_op ) {
+		                      BinaryOp const &binary_op ) noexcept {
 
 			ptrdiff_t range_sz = std::distance( first, last );
 			if( range_sz == 1 ) {
@@ -99,12 +99,13 @@ namespace daw::parallel {
 			while( first != last ) {
 				auto l_it = first++;
 				auto r_it = first++;
-				*out_it++ = ( *l_it ).then(
-				  [r = daw::mutable_capture( r_it ), binary_op]( auto &&result ) {
-					  using arg_t = decltype( result );
-					  return binary_op( std::forward<arg_t>( result ).get( ),
-					                    std::move( **r ).get( ) );
-				  } );
+
+				*out_it++ = l_it->then( [r = daw::mutable_capture( std::move( *r_it ) ),
+				                         binary_op]( auto &&result ) noexcept {
+					using arg_t = decltype( result );
+					return binary_op( std::forward<arg_t>( result ).get( ),
+					                  std::move( r )->get( ) );
+				} );
 			}
 			if( odd_count ) {
 				*out_it++ = std::move( *last );
@@ -117,12 +118,12 @@ namespace daw::parallel {
 		  typename std::iterator_traits<Iterator>::value_type;
 
 		template<typename Iterator, typename BinaryOp>
-		auto reduce_futures( Iterator first, Iterator last, BinaryOp binary_op ) {
+		auto reduce_futures( Iterator first, Iterator last,
+		                     BinaryOp binary_op ) noexcept {
 
 			using value_type = typename std::iterator_traits<Iterator>::value_type;
-
 			auto results = std::vector<value_type>( );
-			results.reserve( static_cast<size_t>( std::distance( first, last ) ) );
+			results.reserve( static_cast<size_t>( std::distance( first, last ) )/2U );
 
 			impl::reduce_futures2( first, last, std::back_inserter( results ),
 			                       binary_op );
@@ -145,7 +146,7 @@ namespace daw::parallel {
 
 			template<typename Iterator>
 			constexpr span<Iterator> operator( )( span<Iterator> l,
-			                                      span<Iterator> r ) const {
+			                                      span<Iterator> r ) const noexcept {
 
 				// We must be contiguous
 				assert( l.end( ) == r.begin( ) );
@@ -161,10 +162,11 @@ namespace daw::parallel {
 	} // namespace impl
 
 	template<typename Iterator, typename Compare = std::less<>>
-	void fj_sort( Iterator first, Iterator last, Compare comp = Compare{} ) {
+	void fj_sort( Iterator first, Iterator last,
+	              Compare comp = Compare{} ) noexcept {
 
 		// Allow for later on swappng with items like stable_sort
-		constexpr auto sorter = []( auto f, auto l, auto cmp ) {
+		constexpr auto sorter = []( auto f, auto l, auto cmp ) noexcept {
 			std::sort( f, l, cmp );
 		};
 
@@ -173,16 +175,17 @@ namespace daw::parallel {
 		auto sorters = std::vector<boost::future<impl::span<Iterator>>>( );
 
 		auto const sort_fn =
-		  [sorter, comp]( impl::span<Iterator> rng ) -> impl::span<Iterator> {
+		  [sorter,
+		   comp]( impl::span<Iterator> rng ) noexcept -> impl::span<Iterator> {
 			sorter( rng.begin( ), rng.end( ), comp );
 			return rng;
 		};
 
 		for( auto rng : ranges ) {
-			sorters.push_back( boost::async(
-			  boost::launch::async,
-			  [rng = daw::mutable_capture( rng ),
-			   sort_fn]( ) -> impl::span<Iterator> { return sort_fn( *rng ); } ) );
+			sorters.push_back(
+			  boost::async( boost::launch::async,
+			                [rng = daw::mutable_capture( rng ), sort_fn]( ) noexcept
+			                -> impl::span<Iterator> { return sort_fn( *rng ); } ) );
 		}
 
 		impl::reduce_futures( sorters.begin( ), sorters.end( ),
