@@ -74,7 +74,7 @@ auto test_sort( std::string const &title, std::vector<Value> const &c,
 	return daw::bench_n_test_mbs2<NUM_RUNS>(
 	  title, sz,
 	  []( auto const &rng ) {
-		  return true; /*return std::is_sorted( rng.first, rng.second );*/
+		  return std::is_sorted( rng.first, rng.second );
 	  },
 	  s, c );
 }
