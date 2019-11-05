@@ -24,6 +24,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -238,8 +239,7 @@ namespace daw {
 	         typename Function, typename... Args>
 	std::array<double, Runs>
 	bench_n_test_mbs2( std::string const &title, size_t bytes,
-	                   Validator &&validator, Function &&func,
-	                   Args &&... args ) noexcept {
+	                   Validator &&validator, Function &&func, Args &&... args ) {
 		static_assert( Runs > 0 );
 		auto results = std::array<double, Runs>{};
 
@@ -293,8 +293,8 @@ namespace daw {
 
 			auto const valid_start = std::chrono::high_resolution_clock::now( );
 			if( not validator( result ) ) {
-				std::cerr << "Error validating result\n";
-				std::abort( );
+				std::cerr << "Error validating result\n" << std::flush;
+				throw std::runtime_error( "Error in validating result" );
 			}
 			valid_time += std::chrono::duration<double>(
 			  std::chrono::high_resolution_clock::now( ) - valid_start );
